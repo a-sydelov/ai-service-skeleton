@@ -1,0 +1,210 @@
+services:
+  trainer:
+    build: .
+    entrypoint: ["python", "-m", "scripts.train_reference_sklearn"]
+    command: ["--name", "${MODEL_NAME}", "--version", "1", "--out-root", "/models", "--algo", "logreg"]
+    volumes:
+      - ./models:/models
+      - ./${DATA_ROOT}:/app/${DATA_ROOT}
+    profiles: ["train"]
+
+  loadgen:
+    build: .
+    entrypoint: ["python", "-m", "scripts.load_profile"]
+    environment:
+      TARGET_URL: "http://gateway:8080/predict"
+      DATA_ROOT: "${DATA_ROOT}"
+    volumes:
+      - ./${DATA_ROOT}:/app/${DATA_ROOT}
+    depends_on:
+      - gateway
+    profiles: ["load"]
+
+  inference-v1:
+    build: .
+    environment:
+      PROMETHEUS_MULTIPROC_DIR: "/tmp/prom-multiproc"
+      LOG_LEVEL: "${LOG_LEVEL}"
+      SERVICE_NAME: "${SERVICE_NAME}"
+      SERVICE_VERSION: "${SERVICE_VERSION}"
+      COMPARE_ENABLED: "${COMPARE_ENABLED:-true}"
+      COMPARE_URL: "http://compare:8090/event"
+      COMPARE_TIMEOUT_S: "${COMPARE_TIMEOUT_S:-0.5}"
+      COMPARE_QUEUE_SIZE: "${COMPARE_QUEUE_SIZE:-2048}"
+      MODEL_DIR: "${MODEL_DIR_V1}"
+      RELOAD_TOKEN: "${RELOAD_TOKEN}"
+      MAX_REQUEST_BYTES: "${MAX_REQUEST_BYTES}"
+      MAX_BATCH_SIZE: "${MAX_BATCH_SIZE}"
+      METRICS_PROFILE: "${METRICS_PROFILE}"
+      CLASSIFICATION_INCLUDE_PROBA: "${CLASSIFICATION_INCLUDE_PROBA}"
+      EMBEDDING_INCLUDE_VECTOR: "${EMBEDDING_INCLUDE_VECTOR}"
+    volumes:
+      - ./models:/models:ro
+    restart: unless-stopped
+    mem_limit: "${INFERENCE_MEM}"
+    cpus: "${INFERENCE_CPUS}"
+
+  inference-v2:
+    build: .
+    environment:
+      PROMETHEUS_MULTIPROC_DIR: "/tmp/prom-multiproc"
+      LOG_LEVEL: "${LOG_LEVEL}"
+      SERVICE_NAME: "${SERVICE_NAME}"
+      SERVICE_VERSION: "${SERVICE_VERSION}"
+      COMPARE_ENABLED: "${COMPARE_ENABLED:-true}"
+      COMPARE_URL: "http://compare:8090/event"
+      COMPARE_TIMEOUT_S: "${COMPARE_TIMEOUT_S:-0.5}"
+      COMPARE_QUEUE_SIZE: "${COMPARE_QUEUE_SIZE:-2048}"
+      MODEL_DIR: "${MODEL_DIR_V2}"
+      RELOAD_TOKEN: "${RELOAD_TOKEN}"
+      MAX_REQUEST_BYTES: "${MAX_REQUEST_BYTES}"
+      MAX_BATCH_SIZE: "${MAX_BATCH_SIZE}"
+      METRICS_PROFILE: "${METRICS_PROFILE}"
+      CLASSIFICATION_INCLUDE_PROBA: "${CLASSIFICATION_INCLUDE_PROBA}"
+      EMBEDDING_INCLUDE_VECTOR: "${EMBEDDING_INCLUDE_VECTOR}"
+    volumes:
+      - ./models:/models:ro
+    restart: unless-stopped
+    mem_limit: "${INFERENCE_MEM}"
+    cpus: "${INFERENCE_CPUS}"
+
+
+  compare:
+    build: .
+    container_name: compare
+    command: ["gunicorn","-k","uvicorn_worker.UvicornWorker","compare.main:app","-b","0.0.0.0:8090","--workers","1","--timeout","30"]
+    environment:
+      LOG_LEVEL: "${LOG_LEVEL}"
+      COMPARE_PAIR_TTL_SECONDS: "${COMPARE_PAIR_TTL_SECONDS:-60}"
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: gateway
+    ports:
+      - "${GATEWAY_PORT}:8080"
+    environment:
+      LOG_LEVEL: "${LOG_LEVEL}"
+      ROUTER_STATE_FILE: "/state/rollout_state.json"
+      PRIMARY_VARIANT: "${PRIMARY_VARIANT}"
+      SHADOW_VARIANT: "${SHADOW_VARIANT}"
+      SHADOW_SAMPLE_RATE: "${SHADOW_SAMPLE_RATE}"
+      SERVE_SHADOW_RATE: "${SERVE_SHADOW_RATE}"
+    volumes:
+      - ./state:/state
+    depends_on:
+      - inference-v1
+      - inference-v2
+      - router
+      - compare
+    restart: unless-stopped
+
+  router:
+    build: .
+    container_name: router
+    command: ["gunicorn","-k","uvicorn_worker.UvicornWorker","router.main:app","-b","0.0.0.0:8080","--workers","1","--timeout","30","-c","/app/router/gunicorn_conf.py"]
+    environment:
+      PROMETHEUS_MULTIPROC_DIR: "/tmp/prom-multiproc"
+      LOG_LEVEL: "${LOG_LEVEL}"
+      V1_URL: "${V1_URL}"
+      V2_URL: "${V2_URL}"
+      ROUTER_STATE_FILE: "/state/rollout_state.json"
+      PRIMARY_VARIANT: "${PRIMARY_VARIANT}"
+      SHADOW_VARIANT: "${SHADOW_VARIANT}"
+      SHADOW_SAMPLE_RATE: "${SHADOW_SAMPLE_RATE}"
+      SERVE_SHADOW_RATE: "${SERVE_SHADOW_RATE}"
+      ADMIN_TOKEN: "${ADMIN_TOKEN}"
+      MAX_REQUEST_BYTES: "${MAX_REQUEST_BYTES}"
+      MAX_BATCH_SIZE: "${MAX_BATCH_SIZE}"
+    volumes:
+      - ./state:/state
+      - ./models:/models:ro
+    depends_on:
+      - inference-v1
+      - inference-v2
+    restart: unless-stopped
+    mem_limit: "${ROUTER_MEM}"
+    cpus: "${ROUTER_CPUS}"
+
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    container_name: prometheus
+    ports:
+      - "${PROMETHEUS_PORT}:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    restart: unless-stopped
+    depends_on:
+      - router
+      - compare
+      - inference-v1
+      - inference-v2
+      - cadvisor
+      - node-exporter
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.31.1
+    container_name: alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT}:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--log.level=info"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.4.1
+    container_name: grafana
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  # --- Infrastructure monitoring (Variant A): cAdvisor + node_exporter ---
+  # cAdvisor exposes per-container CPU/RAM/Network/FS metrics.
+  cadvisor:
+    image: ghcr.io/google/cadvisor:0.54.0
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      # Optional: expose UI on host for debugging (Prometheus scrapes via service DNS internally)
+      - "${CADVISOR_PORT:-8081}:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+
+  # node_exporter exposes host-level CPU/RAM/Disk/Network metrics.
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.10.2
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro

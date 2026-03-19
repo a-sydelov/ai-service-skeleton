@@ -1,0 +1,109 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: "router"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["router:8080"]
+
+  - job_name: "compare"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["compare:8090"]
+
+  - job_name: "inference_v1"
+    metrics_path: /metrics
+    dns_sd_configs:
+      - names: ["inference-v1"]
+        type: A
+        port: 8000
+    relabel_configs:
+      - target_label: variant
+        replacement: "v1"
+
+  - job_name: "inference_v2"
+    metrics_path: /metrics
+    dns_sd_configs:
+      - names: ["inference-v2"]
+        type: A
+        port: 8000
+    relabel_configs:
+      - target_label: variant
+        replacement: "v2"
+
+  # --- Infrastructure monitoring (Variant A) ---
+  # cAdvisor: per-container CPU/RAM/Network/FS metrics.
+  # Keep only the core signals to avoid unnecessary Prometheus load.
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "(machine_cpu_cores|machine_memory_bytes|container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_spec_memory_limit_bytes|container_spec_cpu_quota|container_spec_cpu_period|container_network_receive_bytes_total|container_network_transmit_bytes_total|container_start_time_seconds|container_last_seen|container_fs_usage_bytes|container_fs_reads_bytes_total|container_fs_writes_bytes_total)"
+        action: keep
+      # Drop pseudo/empty containers (e.g., root cgroup) and unlabeled series.
+      - source_labels: [image]
+        regex: "^$"
+        action: drop
+      - source_labels: [name]
+        regex: "^/$"
+        action: drop
+
+      # --- Common join keys / friendly labels (low-cardinality) ---
+      # Extract docker/containerd id (64-hex) so we can join with inference_instance_info.
+      - source_labels: [id]
+        regex: "^/docker/([0-9a-f]{64}).*$"
+        target_label: container_id
+        replacement: "$1"
+        action: replace
+
+      # Compose metadata (human-readable and stable within a deployment).
+      - source_labels: [container_label_com_docker_compose_project]
+        regex: "(.+)"
+        target_label: project
+        replacement: "$1"
+        action: replace
+      - source_labels: [container_label_com_docker_compose_service]
+        regex: "(.+)"
+        target_label: service
+        replacement: "$1"
+        action: replace
+      - source_labels: [container_label_com_docker_compose_container_number]
+        regex: "(.+)"
+        target_label: replica
+        replacement: "$1"
+        action: replace
+
+      # Build a friendly container name like: <project>-<service>-<replica>
+      - source_labels:
+          [project, service, replica]
+        regex: "(.+);(.+);(.+)"
+        target_label: container
+        replacement: "$1-$2-$3"
+        action: replace
+
+      # Attach variant for inference containers only.
+      - source_labels: [service]
+        regex: "inference-v([0-9]+)"
+        target_label: variant
+        replacement: "v$1"
+        action: replace
+
+  # node_exporter: host-level CPU/RAM/Disk/Network metrics.
+  - job_name: "node"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "(node_cpu_seconds_total|node_load1|node_load5|node_load15|node_memory_MemTotal_bytes|node_memory_MemAvailable_bytes|node_filesystem_size_bytes|node_filesystem_avail_bytes|node_network_receive_bytes_total|node_network_transmit_bytes_total|node_uname_info)"
+        action: keep

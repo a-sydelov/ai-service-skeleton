@@ -1,0 +1,47 @@
+{
+  "name": "model",
+  "version": "2",
+  "task": "classification",
+  "runtime": "sklearn",
+  "model_file": "model.joblib",
+  "created_at": "2026-03-13T21:53:47.692530+00:00",
+  "n_features": 561,
+  "classes": [
+    "WALKING",
+    "WALKING_UPSTAIRS",
+    "WALKING_DOWNSTAIRS",
+    "SITTING",
+    "STANDING",
+    "LAYING"
+  ],
+  "metrics": {
+    "accuracy_test": 0.9467254835425857
+  },
+  "training": {
+    "dataset": "UCI HAR Dataset",
+    "random_state": 42,
+    "train_rows": 7352,
+    "test_rows": 2947,
+    "algo": "MLPClassifier",
+    "hidden_layer_sizes": [
+      128
+    ],
+    "alpha": 0.0001,
+    "max_iter": 1000,
+    "early_stopping": false,
+    "scaler": "StandardScaler"
+  },
+  "contract": {
+    "input_schema_version": "v1",
+    "input": {
+      "type": "float32",
+      "shape": [
+        "N",
+        561
+      ]
+    },
+    "output": {
+      "type": "classification"
+    }
+  }
+}

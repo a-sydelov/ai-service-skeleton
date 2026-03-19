@@ -1,0 +1,2224 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "expr": "increase(router_rollout_events_total{event=\"cutover\"}[1m]) > 0",
+        "hide": false,
+        "iconColor": "rgba(31, 120, 193, 1)",
+        "name": "cutover",
+        "showIn": 0,
+        "tagKeys": "cutover",
+        "textFormat": "{{cutover}}",
+        "type": "tags"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "expr": "increase(router_rollout_events_total{event=\"rollback\"}[1m]) > 0",
+        "hide": false,
+        "iconColor": "rgba(229, 83, 83, 1)",
+        "name": "rollback",
+        "showIn": 0,
+        "tagKeys": "rollback",
+        "textFormat": "{{rollback}}",
+        "type": "tags"
+      }
+    ]
+  },
+  "description": "Operational dashboard for rollout and traffic distribution between v1 and v2. Shows active primary/shadow roles, routing topology, release actions, live traffic split, and per-instance request throughput.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Shows which service is currently primary or shadow, what model version it serves, how many replicas are active, and how live and mirrored traffic are distributed.\n\n- Time — timestamp of the current rollout state shown in the row.\n- Role — current router role assigned to the service (`primary` or `shadow`).\n- Service — inference service currently mapped to the role.\n- Runtime — model runtime used by the service (for example, `sklearn` or `onnx`).\n- Model version — version of the model loaded by the service.\n- Replicas — number of currently active replicas serving this model version.\n- Traffic split% — share of live user traffic routed to the service.\n- Traffic shadow sample% — share of requests mirrored to shadow for comparison only; this does not change the main user response path.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false,
+            "wrapText": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Role"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "primary": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "primary"
+                      },
+                      "shadow": {
+                        "color": "orange",
+                        "index": 1,
+                        "text": "shadow"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Live traffic%"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "gauge",
+                  "valueDisplayMode": "text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Shadow sample%"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "cellHeight": "sm",
+        "frameIndex": 1,
+        "showHeader": true
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "count by (variant, job, model_version, runtime, task) (model_active_info)\n* on (variant) group_left(role)\nmax by (variant, role) (router_active_variant == 1)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "round(\n  (100 * (1 - scalar(max(router_serve_shadow_rate))))\n  * max by (variant, role) (router_active_variant{role=\"primary\"} == 1)\n)\nor\nround(\n  (100 * scalar(max(router_serve_shadow_rate)))\n  * max by (variant, role) (router_active_variant{role=\"shadow\"} == 1)\n)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "round(\n  (0)\n  * max by (variant, role) (router_active_variant{role=\"primary\"} == 1)\n)\nor \nround(\n  (100 * scalar(max(router_shadow_sample_rate)))\n  * max by (variant, role) (router_active_variant{role=\"shadow\"} == 1)\n)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "C"
+        }
+      ],
+      "title": "Active Rollout (Primary / Shadow)",
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {}
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "model_version": true,
+              "task": true
+            },
+            "includeByName": {},
+            "indexByName": {
+              "Time": 0,
+              "Value #A": 5,
+              "Value #B": 6,
+              "Value #C": 7,
+              "job": 2,
+              "model_version": 8,
+              "role": 1,
+              "runtime": 3,
+              "task": 9,
+              "variant": 4
+            },
+            "renameByName": {
+              "Time": "Time",
+              "Value #A": "Replicas",
+              "Value #B": "Live traffic%",
+              "Value #C": "Shadow sample%",
+              "job": "Service",
+              "model_version": "",
+              "role": "Role",
+              "runtime": "Runtime",
+              "task": "",
+              "variant": "Model version"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Service"
+              }
+            ]
+          }
+        },
+        {
+          "id": "formatTime",
+          "options": {
+            "outputFormat": "YYYY-MM-DD HH:mm:ss",
+            "timeField": "Time",
+            "useTimezone": true
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Shows how the router maps current `primary` and `shadow` roles to fixed model branches.\n\n- Router — assigns branch roles.\n- primary / shadow — current routing pointers.\n- v1 / v2 — rollout variants.\n- inference_* — active inference services.\n- /models/model/* — mounted model artifact path.\n- metadata.version — loaded model version.\n- Replicas — active replica count.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "role_1"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "primary": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "primary"
+                      },
+                      "shadow": {
+                        "color": "orange",
+                        "index": 1,
+                        "text": "shadow"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "role_2"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "primary": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "primary"
+                      },
+                      "shadow": {
+                        "color": "orange",
+                        "index": 1,
+                        "text": "shadow"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "m_1"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "1": {
+                        "index": 0,
+                        "text": "/models/model/1"
+                      },
+                      "2": {
+                        "index": 1,
+                        "text": "/models/model/2"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "m_2"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "1": {
+                        "index": 0,
+                        "text": "/models/model/1"
+                      },
+                      "2": {
+                        "index": 1,
+                        "text": "/models/model/2"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "meta_version_1"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "v1": {
+                        "index": 0,
+                        "text": "metadata.version=\"v1\""
+                      },
+                      "v2": {
+                        "index": 1,
+                        "text": "metadata.version=\"v2\""
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "meta_version_2"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "v1": {
+                        "index": 1,
+                        "text": "metadata.version=\"v1\""
+                      },
+                      "v2": {
+                        "index": 0,
+                        "text": "metadata.version=\"v2\""
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 5
+      },
+      "id": 5,
+      "options": {
+        "infinitePan": false,
+        "inlineEditing": true,
+        "panZoom": false,
+        "root": {
+          "background": {
+            "color": {
+              "fixed": "transparent"
+            },
+            "image": {
+              "field": "",
+              "fixed": "",
+              "mode": "fixed"
+            },
+            "size": "cover"
+          },
+          "border": {
+            "color": {
+              "fixed": "dark-green"
+            }
+          },
+          "constraint": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "elements": [
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "super-light-yellow"
+                },
+                "radius": 5,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "super-light-yellow"
+                },
+                "size": 14,
+                "text": {
+                  "fixed": "Replicas"
+                },
+                "valign": "top"
+              },
+              "connections": [],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "replicas_group",
+              "placement": {
+                "height": 161,
+                "left": 864,
+                "top": 15,
+                "width": 100
+              },
+              "type": "rectangle"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "fixed": "rgb(204, 204, 220)"
+                },
+                "size": 16,
+                "text": {
+                  "fixed": "Router"
+                },
+                "valign": "middle"
+              },
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "Router title",
+              "placement": {
+                "height": 26,
+                "left": 12,
+                "top": 42,
+                "width": 65
+              },
+              "type": "text"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "fixed": "dark-green"
+                }
+              },
+              "config": {
+                "statusColor": {
+                  "fixed": "transparent"
+                },
+                "type": "Single"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_1",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "lineStyle": {
+                    "animate": false,
+                    "style": "solid"
+                  },
+                  "path": "straight",
+                  "radius": {
+                    "fixed": 1,
+                    "max": 200,
+                    "min": 0
+                  },
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0.5
+                  },
+                  "sourceOriginal": {
+                    "x": 108,
+                    "y": 151.5
+                  },
+                  "target": {
+                    "x": -1.0153846153846153,
+                    "y": 0.08
+                  },
+                  "targetName": "role_1",
+                  "targetOriginal": {
+                    "x": 330,
+                    "y": 62
+                  }
+                },
+                {
+                  "color": {
+                    "field": "role_2",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": -0.5
+                  },
+                  "sourceOriginal": {
+                    "x": 120,
+                    "y": 139.5
+                  },
+                  "target": {
+                    "x": -1.0444444444444445,
+                    "y": -0.125
+                  },
+                  "targetName": "role_2",
+                  "targetOriginal": {
+                    "x": 167,
+                    "y": 171
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "Router",
+              "placement": {
+                "height": 54,
+                "left": 17,
+                "top": 68,
+                "width": 54
+              },
+              "type": "server"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "image": {
+                  "field": "role_1",
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "size": "cover"
+              },
+              "border": {
+                "color": {
+                  "field": "role_1",
+                  "fixed": "#C0D8FF"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_1",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "role_1",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_1",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 237,
+                    "y": 95
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0.0625
+                  },
+                  "targetName": "variant_1",
+                  "targetOriginal": {
+                    "x": 282,
+                    "y": 94
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "role_1",
+              "placement": {
+                "height": 32,
+                "left": 101,
+                "top": 52,
+                "width": 95
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                },
+                "image": {
+                  "field": "role_1",
+                  "fixed": "",
+                  "mode": "fixed"
+                },
+                "size": "cover"
+              },
+              "border": {
+                "color": {
+                  "field": "role_2",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_2",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "role_2",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_2",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 293,
+                    "y": 169
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0.0625
+                  },
+                  "targetName": "variant_2",
+                  "targetOriginal": {
+                    "x": 338,
+                    "y": 168
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "role_2",
+              "placement": {
+                "height": 32,
+                "left": 101,
+                "top": 106,
+                "width": 95
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_1",
+                  "fixed": "#C0D8FF"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_1",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "variant_1",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_1",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 319,
+                    "y": 95
+                  },
+                  "target": {
+                    "x": -1.0076923076923077,
+                    "y": 0
+                  },
+                  "targetName": "job_1",
+                  "targetOriginal": {
+                    "x": 363,
+                    "y": 96
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "variant_1",
+              "placement": {
+                "height": 32,
+                "left": 226,
+                "top": 52,
+                "width": 37
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_2",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_2",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "variant_2",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_2",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1.5,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 320,
+                    "y": 181
+                  },
+                  "target": {
+                    "x": -1.0151515151515151,
+                    "y": 0
+                  },
+                  "targetName": "Element 8",
+                  "targetOriginal": {
+                    "x": 363,
+                    "y": 182
+                  }
+                },
+                {
+                  "color": {
+                    "field": "role_2",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 320,
+                    "y": 181
+                  },
+                  "target": {
+                    "x": -0.9830508474576272,
+                    "y": 0
+                  },
+                  "targetName": "job_2",
+                  "targetOriginal": {
+                    "x": 365,
+                    "y": 182
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "variant_2",
+              "placement": {
+                "height": 32,
+                "left": 226,
+                "top": 106,
+                "width": 37
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_1",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_1",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "job_1",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_1",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 448,
+                    "y": 75
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": -0.0625
+                  },
+                  "targetName": "m_1",
+                  "targetOriginal": {
+                    "x": 480,
+                    "y": 76
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "job_1",
+              "placement": {
+                "height": 32,
+                "left": 293,
+                "top": 52,
+                "width": 118
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_2",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_2",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "job_2",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_2",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1.5,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 482,
+                    "y": 181
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0
+                  },
+                  "targetName": "Element 10",
+                  "targetOriginal": {
+                    "x": 521,
+                    "y": 182
+                  }
+                },
+                {
+                  "color": {
+                    "field": "role_2",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 482,
+                    "y": 181
+                  },
+                  "target": {
+                    "x": -0.9874213836477987,
+                    "y": 0
+                  },
+                  "targetName": "m_2",
+                  "targetOriginal": {
+                    "x": 522,
+                    "y": 182
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "job_2",
+              "placement": {
+                "height": 32,
+                "left": 293,
+                "top": 106,
+                "width": 118
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_1",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_1",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "m_1",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_1",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1.5,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 680,
+                    "y": 95
+                  },
+                  "target": {
+                    "x": -0.9901960784313726,
+                    "y": 0.0625
+                  },
+                  "targetName": "Element 11",
+                  "targetOriginal": {
+                    "x": 731,
+                    "y": 94
+                  }
+                },
+                {
+                  "color": {
+                    "field": "role_1",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 680,
+                    "y": 95
+                  },
+                  "target": {
+                    "x": -0.9901960784313726,
+                    "y": 0
+                  },
+                  "targetName": "meta_v_1",
+                  "targetOriginal": {
+                    "x": 720,
+                    "y": 96
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "m_1",
+              "placement": {
+                "height": 32,
+                "left": 441,
+                "top": 52,
+                "width": 159
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_2",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_2",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "m_2",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_2",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 639,
+                    "y": 129
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": 0.0625
+                  },
+                  "targetName": "meta_v_2",
+                  "targetOriginal": {
+                    "x": 671,
+                    "y": 128
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "m_2",
+              "placement": {
+                "height": 32,
+                "left": 441,
+                "top": 106,
+                "width": 159
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_1",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_1",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "meta_version_1",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_1",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1.5,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 923,
+                    "y": 95
+                  },
+                  "target": {
+                    "x": -0.9607843137254902,
+                    "y": -0.015384615384615385
+                  },
+                  "targetName": "Element 13",
+                  "targetOriginal": {
+                    "x": 965,
+                    "y": 96
+                  }
+                },
+                {
+                  "color": {
+                    "field": "role_1",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 955,
+                    "y": 75
+                  },
+                  "target": {
+                    "x": -1.02,
+                    "y": 0.3416149068322981
+                  },
+                  "targetName": "replicas_group",
+                  "targetOriginal": {
+                    "x": 1002,
+                    "y": 76
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "meta_v_1",
+              "placement": {
+                "height": 32,
+                "left": 630,
+                "top": 52,
+                "width": 204
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_2",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_2",
+                  "fixed": "#000000"
+                },
+                "size": 12,
+                "text": {
+                  "field": "meta_version_2",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [
+                {
+                  "color": {
+                    "field": "role_2",
+                    "fixed": "rgb(204, 204, 220)"
+                  },
+                  "direction": {
+                    "fixed": "forward",
+                    "mode": "fixed"
+                  },
+                  "path": "straight",
+                  "size": {
+                    "fixed": 1,
+                    "max": 10,
+                    "min": 1
+                  },
+                  "source": {
+                    "x": 1,
+                    "y": 0
+                  },
+                  "sourceOriginal": {
+                    "x": 955,
+                    "y": 130
+                  },
+                  "target": {
+                    "x": -1,
+                    "y": -0.3416149068322981
+                  },
+                  "targetName": "replicas_group",
+                  "targetOriginal": {
+                    "x": 1003,
+                    "y": 131
+                  }
+                }
+              ],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "meta_v_2",
+              "placement": {
+                "height": 32,
+                "left": 630,
+                "top": 106,
+                "width": 204
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_1",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_1",
+                  "fixed": "#000000"
+                },
+                "size": 14,
+                "text": {
+                  "field": "replicas_1",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "replicas_1",
+              "placement": {
+                "height": 42,
+                "left": 889,
+                "top": 47,
+                "width": 50
+              },
+              "type": "metric-value"
+            },
+            {
+              "background": {
+                "color": {
+                  "fixed": "transparent"
+                }
+              },
+              "border": {
+                "color": {
+                  "field": "role_2",
+                  "fixed": "super-light-blue"
+                },
+                "radius": 1,
+                "width": 1
+              },
+              "config": {
+                "align": "center",
+                "color": {
+                  "field": "role_2",
+                  "fixed": "#000000"
+                },
+                "size": 14,
+                "text": {
+                  "field": "replicas_2",
+                  "fixed": "",
+                  "mode": "field"
+                },
+                "valign": "middle"
+              },
+              "connections": [],
+              "constraint": {
+                "horizontal": "left",
+                "vertical": "top"
+              },
+              "name": "replicas_2",
+              "placement": {
+                "height": 42,
+                "left": 889,
+                "top": 102,
+                "width": 50
+              },
+              "type": "metric-value"
+            }
+          ],
+          "name": "Element 1772903935378",
+          "placement": {
+            "height": 100,
+            "left": 0,
+            "rotation": 0,
+            "top": 0,
+            "width": 100
+          },
+          "type": "frame"
+        },
+        "showAdvancedTypes": true,
+        "tooltip": {
+          "disableForOneClick": false,
+          "mode": "single"
+        },
+        "zoomToContent": false
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "label_replace(\n  count by (variant, job, model_version, runtime, task) (model_active_info{variant=\"v1\"})\n  * on (variant) group_left(role)\n  max by (variant, role) (router_active_variant{variant=\"v1\"} == 1),\n  \"metadata_version\", \"$1\", \"variant\", \"(.*)\"\n)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "label_replace(\n  count by (variant, job, model_version, runtime, task) (model_active_info{variant=\"v2\"})\n  * on (variant) group_left(role)\n  max by (variant, role) (router_active_variant{variant=\"v2\"} == 1),\n  \"metadata_version\", \"$1\", \"variant\", \"(.*)\"\n)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "title": "Active Routing Topology",
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {}
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "runtime",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {
+              "Time 1": "",
+              "Time 2": "",
+              "Value #A": "replicas_1",
+              "Value #B": "replicas_2",
+              "job": "",
+              "job 1": "job_1",
+              "job 2": "job_2",
+              "metadata_version 1": "meta_version_1",
+              "metadata_version 2": "meta_version_2",
+              "model_version 1": "m_1",
+              "model_version 2": "m_2",
+              "role 1": "role_1",
+              "role 2": "role_2",
+              "runtime 2": "",
+              "task 1": "",
+              "task 2": "",
+              "variant 1": "variant_1",
+              "variant 2": "variant_2"
+            }
+          }
+        }
+      ],
+      "type": "canvas"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Shows recent rollout control actions such as cutover and rollback, including execution time, resulting primary version, and operation status.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "mappings": [
+            {
+              "options": {
+                "router_cutover": {
+                  "index": 0,
+                  "text": "cutover"
+                },
+                "router_rollback": {
+                  "index": 1,
+                  "text": "rollback"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Operation"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "router_cutover": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "cutover"
+                      },
+                      "router_rollback": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "rollback"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.wrapText",
+                "value": false
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "primary_after"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "primary_before"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 137
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Operation time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 188
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Primary"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 87
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Operation time"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 5
+      },
+      "id": 6,
+      "options": {
+        "cellHeight": "sm",
+        "enablePagination": true,
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Operation time"
+          }
+        ]
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "{group=\"control\", __name__=~\"router_cutover|router_rollback\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Release operation",
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "at": false,
+              "error": true,
+              "group": true,
+              "instance": true,
+              "job": true,
+              "primary_after": false,
+              "primary_before": true,
+              "result": false,
+              "shadow_after": true,
+              "shadow_before": true
+            },
+            "includeByName": {},
+            "indexByName": {
+              "Time": 0,
+              "Value": 12,
+              "__name__": 2,
+              "at": 1,
+              "error": 3,
+              "group": 4,
+              "instance": 5,
+              "job": 6,
+              "primary_after": 7,
+              "primary_before": 8,
+              "result": 9,
+              "shadow_after": 10,
+              "shadow_before": 11
+            },
+            "renameByName": {
+              "Time": "",
+              "__name__": "Operation",
+              "at": "Operation time",
+              "primary_after": "Primary"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Shows the percentage of successful POST /predict traffic routed to v1 and v2 over time. Useful for validating cutover, rollback, and expected traffic distribution.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "expr": "100 * sum by (job) (rate(http_requests_total{job=~\"inference_v[12]\",method=\"POST\",path=\"/predict\",status=~\"2..\"}[5m])) / scalar(clamp_min(sum(rate(http_requests_total{job=~\"inference_v[12]\",method=\"POST\",path=\"/predict\",status=~\"2..\"}[5m])), 0.000001))",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Traffic Split % (v1 vs v2) — POST /predict, 2xx",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Shows successful POST /predict requests per second for each inference instance. Useful for checking per-replica load distribution, hotspotting, and scaling behavior.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (job, instance) (\n  rate(http_requests_total{job=~\"inference_v[12]\",method=\"POST\",path=\"/predict\",status=~\"2..\"}[1m])\n)",
+          "legendFormat": "{{job}} / {{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "RPS by Instance — POST /predict, 2xx",
+      "type": "timeseries"
+    }
+  ],
+  "preload": false,
+  "refresh": "",
+  "schemaVersion": 42,
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Inference Service (v1/v2 + Scaling)",
+  "uid": "inference_service_v",
+  "version": 2,
+  "weekStart": ""
+}

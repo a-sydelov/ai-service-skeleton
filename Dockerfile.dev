@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Keep this image strictly for local dev/test tooling.
+# Production services use Dockerfile (no dev tooling baked in).
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libgomp1 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt requirements-dev.txt /tmp/
+RUN pip install --no-cache-dir --progress-bar off --disable-pip-version-check \
+    -r /tmp/requirements.txt \
+    -r /tmp/requirements-dev.txt
+
+WORKDIR /src

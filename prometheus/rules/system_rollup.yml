@@ -1,0 +1,160 @@
+groups:
+  - name: system_rollup
+    interval: 5s
+    rules:
+      # ---- Core joins (keys) ----
+      - record: inference_container_map
+        expr: |
+          max by (variant, instance, container_id) (
+            inference_instance_info{job=~"inference_v[12]"} == 1
+          )
+
+      - record: inference_model_info
+        expr: |
+          max by (variant, instance, model_name, model_version, task, runtime, model_dir) (
+            model_active_info{job=~"inference_v[12]"} == 1
+          )
+
+      - record: router_variant_role
+        expr: |
+          max by (variant, role) (
+            router_active_variant{role=~"primary|shadow"} == 1
+          )
+
+      # ---- Rollout summary: 2 rows (primary/shadow), value = loaded replica count ----
+      - record: inference_loaded_replicas
+        expr: |
+          count by (variant) (
+            model_loaded{job=~"inference_v[12]"} == 1
+          )
+
+      - record: inference_active_model_info_by_variant
+        expr: |
+          max by (variant, model_name, model_version, task, runtime, model_dir) (
+            model_active_info{job=~"inference_v[12]"} == 1
+          )
+
+      - record: router_rollout_active_replicas
+        expr: |
+          (
+            (
+              router_active_variant{role=~"primary|shadow", variant=~"v[12]"} == 1
+            )
+            * on(variant) group_left()
+            inference_loaded_replicas
+            * on(variant) group_left(model_name, model_version, task, runtime, model_dir)
+            inference_active_model_info_by_variant
+          )
+          or
+          (
+            (router_active_variant{role="shadow", variant="off"} == 1) * 0
+          )
+
+      # ---- Infra/container signals, pre-joined (no Grafana hacks) ----
+      # Friendly container label from cAdvisor (compose: <project>-<service>-<replica>)
+      - record: cadvisor_inference_container_labels
+        expr: |
+          max by (container_id, container, variant) (
+            container_last_seen{job="cadvisor", variant=~"v[12]", container_id!=""}
+          )
+
+      - record: inference_replica_up
+        expr: |
+          (
+            max by (container_id, container, variant) (
+              (time() - container_last_seen{job="cadvisor", variant=~"v[12]", container_id!=""}) < 20
+            )
+            * on(container_id) group_left(instance)
+            inference_container_map
+            * on(variant, instance) group_left(model_name, model_version, task, runtime, model_dir)
+            inference_model_info
+            * on(variant) group_left(role)
+            router_variant_role
+          )
+
+      - record: inference_replica_cpu_pct
+        expr: |
+          (
+            (
+              100 *
+              sum by (container_id, container, variant) (
+                rate(container_cpu_usage_seconds_total{job="cadvisor", variant=~"v[12]", container_id!=""}[1m])
+              )
+              /
+              clamp_min(max(machine_cpu_cores{job="cadvisor"}), 1)
+            )
+            * on(container_id) group_left(instance)
+            inference_container_map
+            * on(variant, instance) group_left(model_name, model_version, task, runtime, model_dir)
+            inference_model_info
+            * on(variant) group_left(role)
+            router_variant_role
+          )
+
+      - record: inference_replica_ram_pct
+        expr: |
+          (
+            (
+              100 *
+              max by (container_id, container, variant) (
+                container_memory_working_set_bytes{job="cadvisor", variant=~"v[12]", container_id!=""}
+              )
+              /
+              clamp_min(
+                max by (container_id, container, variant) (
+                  container_spec_memory_limit_bytes{job="cadvisor", variant=~"v[12]", container_id!=""}
+                ),
+                1
+              )
+            )
+            * on(container_id) group_left(instance)
+            inference_container_map
+            * on(variant, instance) group_left(model_name, model_version, task, runtime, model_dir)
+            inference_model_info
+            * on(variant) group_left(role)
+            router_variant_role
+          )
+
+      - record: inference_replica_net_rx_bps
+        expr: |
+          (
+            sum by (container_id, container, variant) (
+              rate(container_network_receive_bytes_total{job="cadvisor", variant=~"v[12]", container_id!=""}[1m])
+            )
+            * on(container_id) group_left(instance)
+            inference_container_map
+            * on(variant, instance) group_left(model_name, model_version, task, runtime, model_dir)
+            inference_model_info
+            * on(variant) group_left(role)
+            router_variant_role
+          )
+
+      - record: inference_replica_net_tx_bps
+        expr: |
+          (
+            sum by (container_id, container, variant) (
+              rate(container_network_transmit_bytes_total{job="cadvisor", variant=~"v[12]", container_id!=""}[1m])
+            )
+            * on(container_id) group_left(instance)
+            inference_container_map
+            * on(variant, instance) group_left(model_name, model_version, task, runtime, model_dir)
+            inference_model_info
+            * on(variant) group_left(role)
+            router_variant_role
+          )
+
+      - record: inference_replica_rps_2xx
+        expr: |
+          (
+            sum by (variant, instance) (
+              rate(http_requests_total{job=~"inference_v[12]", path="/predict", status=~"2.."}[1m])
+            )
+            * on(variant, instance) group_left(container_id)
+            inference_container_map
+            * on(container_id) group_left(container)
+            cadvisor_inference_container_labels
+            * on(variant, instance) group_left(model_name, model_version, task, runtime, model_dir)
+            inference_model_info
+            * on(variant) group_left(role)
+            router_variant_role
+          )

@@ -1,0 +1,18 @@
+groups:
+  - name: core
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "Prometheus target down"
+          description: "Target {{ $labels.job }} {{ $labels.instance }} is down."
+
+      - alert: RouterDown
+        expr: router_up == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "Router down"
+          description: "router_up=0 (router process not running or not scraped)."

@@ -1,0 +1,77 @@
+groups:
+  - name: release_gates
+    rules:
+      - alert: PrimaryErrorRatioHigh
+        expr: |
+          (
+            (
+              sum by (variant) (rate(http_requests_total{path="/predict",status=~"5.."}[5m]))
+              /
+              clamp_min(sum by (variant) (rate(http_requests_total{path="/predict"}[5m])), 0.001)
+            )
+            and on (variant) (router_active_variant{role="primary"} == 1)
+          ) > 0.02
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "Primary error ratio high"
+          description: "Primary error ratio > 2% for variant={{ $labels.variant }}."
+
+      - alert: PrimaryLatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (variant, le) (rate(shadow_primary_request_duration_seconds_bucket[5m]))
+          ) > 0.50
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: "Primary p95 latency high"
+          description: "Primary p95 latency > 0.50s for variant={{ $labels.variant }}."
+
+      - alert: ShadowErrorRatioHigh
+        expr: |
+          (
+            (
+              sum by (variant) (rate(http_requests_total{path="/predict",status=~"5.."}[5m]))
+              /
+              clamp_min(sum by (variant) (rate(http_requests_total{path="/predict"}[5m])), 0.001)
+            )
+            and on (variant) (router_active_variant{role="shadow"} == 1)
+          ) > 0.05
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: "Shadow error ratio high"
+          description: "Shadow error ratio > 5% for variant={{ $labels.variant }}."
+
+      - alert: ShadowMismatchRateHigh
+        expr: sum(rate(shadow_mismatch_total[5m])) > 0.20
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: "Shadow mismatches high"
+          description: "Mismatch rate > 0.2/s (label or confidence delta)."
+
+      - alert: ShadowConfidenceDeltaP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(shadow_confidence_delta_bucket[5m]))
+          ) > 0.20
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: "Shadow confidence delta p95 high"
+          description: "confidence delta p95 > 0.20 (possible behavioral drift)."
+
+      - alert: ModelDivergenceWithinJob
+        expr: |
+          count by (job) (
+            sum by (job, model_name, model_version, task, model_dir, runtime) (model_active_info{job=~"inference_v[12]"})
+          ) > 1
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "Model divergence within job"
+          description: "More than one (version/runtime/dir) active within job={{ $labels.job }}."
